@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 
 const DEFAULT_MD = `---
 theme: default
@@ -42,25 +42,31 @@ Content here with standard Markdown features:
 
 # 🎉 Start Editing!
 
-Type your Markdown in the left panel and click **Update Slides** to see changes.
+Type your Markdown in the left panel and watch it update **automatically** in real-time!
 `
 
 export default function App() {
   const [md, setMd] = useState(DEFAULT_MD)
   const [busy, setBusy] = useState(false)
   const [ok, setOk] = useState<null | boolean>(null)
+  const [autoUpdate, setAutoUpdate] = useState(true)
+  const [currentSlide, setCurrentSlide] = useState(1)
+  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null)
 
-  const updateSlides = async () => {
+  const updateSlides = async (markdown: string) => {
     setBusy(true)
     setOk(null)
     try {
       const resp = await fetch('http://localhost:4001/set-markdown', {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain' },
-        body: md,
+        body: markdown,
       })
       const data = await resp.json()
       setOk(Boolean(data.ok))
+      
+      // Clear success message after 2 seconds
+      setTimeout(() => setOk(null), 2000)
     } catch (error) {
       console.error('Failed to update slides:', error)
       setOk(false)
@@ -68,6 +74,63 @@ export default function App() {
       setBusy(false)
     }
   }
+
+  // Debounced auto-update effect
+  useEffect(() => {
+    if (!autoUpdate) return
+
+    // Clear existing timer
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current)
+    }
+
+    // Set new timer for 300ms after user stops typing (near-instant)
+    debounceTimerRef.current = setTimeout(() => {
+      updateSlides(md)
+    }, 50)
+
+    // Cleanup on unmount
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current)
+      }
+    }
+  }, [md, autoUpdate])
+
+  const handleManualUpdate = () => {
+    updateSlides(md)
+  }
+
+  const goToPreviousSlide = () => {
+    setCurrentSlide((prev) => Math.max(1, prev - 1))
+  }
+
+  const goToNextSlide = () => {
+    setCurrentSlide((prev) => prev + 1)
+  }
+
+  const goToSlide = (slideNum: number) => {
+    setCurrentSlide(Math.max(1, slideNum))
+  }
+
+  // Keyboard navigation (arrow keys)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Only handle if not typing in textarea or input
+      if (e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLInputElement) {
+        return
+      }
+      
+      if (e.key === 'ArrowLeft') {
+        goToPreviousSlide()
+      } else if (e.key === 'ArrowRight') {
+        goToNextSlide()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
 
   return (
     <div style={{ display: 'grid', gridTemplateRows: 'auto 1fr', height: '100vh' }}>
@@ -82,11 +145,23 @@ export default function App() {
           backgroundColor: '#fafafa',
         }}
       >
-        <h1 style={{ fontSize: 18, fontWeight: 600, marginRight: 'auto' }}>
+        <h1 style={{ fontSize: 18, fontWeight: 600 }}>
           Markdown → Slidev
         </h1>
+        
+        {/* Auto-update toggle */}
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, marginLeft: 'auto' }}>
+          <input
+            type="checkbox"
+            checked={autoUpdate}
+            onChange={(e) => setAutoUpdate(e.target.checked)}
+            style={{ cursor: 'pointer' }}
+          />
+          <span>Auto-update {autoUpdate && '(1.5s delay)'}</span>
+        </label>
+
         <button
-          onClick={updateSlides}
+          onClick={handleManualUpdate}
           disabled={busy}
           style={{
             padding: '8px 16px',
@@ -99,9 +174,9 @@ export default function App() {
             fontWeight: 500,
           }}
         >
-          {busy ? 'Updating…' : 'Update Slides'}
+          {busy ? 'Updating…' : 'Update Now'}
         </button>
-        <span style={{ fontSize: 14 }}>
+        <span style={{ fontSize: 14, minWidth: 100 }}>
           {ok === true ? '✅ Updated' : ok === false ? '❌ Failed' : ''}
         </span>
       </div>
@@ -135,9 +210,11 @@ export default function App() {
           placeholder="Type your Markdown here..."
         />
 
-        {/* Slidev iframe */}
+        {/* Slidev iframe with navigation */}
         <div
           style={{
+            display: 'flex',
+            flexDirection: 'column',
             border: '1px solid #ddd',
             borderRadius: 12,
             overflow: 'hidden',
@@ -145,13 +222,76 @@ export default function App() {
             boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
           }}
         >
+          {/* Navigation controls */}
+          <div
+            style={{
+              display: 'flex',
+              gap: 8,
+              padding: 8,
+              backgroundColor: '#fafafa',
+              borderBottom: '1px solid #eee',
+              alignItems: 'center',
+            }}
+          >
+            <button
+              onClick={goToPreviousSlide}
+              disabled={currentSlide === 1}
+              style={{
+                padding: '6px 12px',
+                backgroundColor: currentSlide === 1 ? '#e0e0e0' : '#007aff',
+                color: currentSlide === 1 ? '#999' : 'white',
+                border: 'none',
+                borderRadius: 4,
+                cursor: currentSlide === 1 ? 'not-allowed' : 'pointer',
+                fontSize: 14,
+                fontWeight: 500,
+              }}
+            >
+              ← Previous
+            </button>
+            
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: 14 }}>Slide:</span>
+              <input
+                type="number"
+                min="1"
+                value={currentSlide}
+                onChange={(e) => goToSlide(parseInt(e.target.value) || 1)}
+                style={{
+                  width: 60,
+                  padding: '4px 8px',
+                  border: '1px solid #ddd',
+                  borderRadius: 4,
+                  fontSize: 14,
+                }}
+              />
+            </div>
+
+            <button
+              onClick={goToNextSlide}
+              style={{
+                padding: '6px 12px',
+                backgroundColor: '#007aff',
+                color: 'white',
+                border: 'none',
+                borderRadius: 4,
+                cursor: 'pointer',
+                fontSize: 14,
+                fontWeight: 500,
+              }}
+            >
+              Next →
+            </button>
+          </div>
+
           {/* Slidev dev server runs on :3030 by default */}
           <iframe
+            key={currentSlide}
             title="Slidev Preview"
-            src="http://localhost:3030"
+            src={`http://localhost:3030/${currentSlide}`}
             style={{
               width: '100%',
-              height: 'calc(100vh - 72px)',
+              height: 'calc(100vh - 128px)',
               border: '0',
             }}
           />

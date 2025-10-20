@@ -40,4 +40,4 @@ Content here with standard Markdown features:
 
 # 🎉 Start Editing!
 
-Type your Markdown in the left panel and click **Update Slides** to see changes.
+Type your Markdown in the left panel and watch it update **automatically** in real-time!
