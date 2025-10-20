@@ -10,8 +10,15 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  background-color: #0a0a0a;
+  color: #f0f0f0;
 }
 
 code, pre, textarea {
   font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+}
+
+textarea::placeholder {
+  color: #555;
+  opacity: 1;
 }
